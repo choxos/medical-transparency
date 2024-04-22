@@ -1,0 +1,1349 @@
+---
+title: "Research Transparency in 59 Disciplines of Clinical Medicine: A Meta-Research Study"
+author: "Ahmad Sofi-Mahmudi"
+format: 
+  pdf:
+    toc: true
+    number-sections: true
+    colorlinks: true
+  #      html:
+  #              toc: true
+  #              toc-expand: false
+  #              html-math-method: katex
+editor: visual
+---
+
+# Aim
+
+We aimed to assess the adherence to five transparent practices (data availability, code availability, protocol registration and conflicts of interest (COI), and funding disclosures) from open-access articles published in medical journals.
+
+# Results
+
+First, loading the needed packages:
+
+```{r}
+pacman::p_load(dplyr,
+               ggplot2,
+               knitr,
+               gtsummary,
+               tidyr,
+               lubridate,
+               forcats,
+               DiagrammeR,
+               tibble,
+               ggrepel,
+               ggpubr,
+               epiR,
+               here,
+               lme4,
+               nortest,
+               stringr,
+               expss,
+               dvmisc,
+               sjPlot,
+               eply)
+```
+
+And then, loading the datasets:
+
+```{r}
+transparency = read.csv("data/medicaltransparency_opendata.csv")
+transparency = transparency %>% filter(type %in% c("research-article", "review-article", "systematic-review"))
+```
+
+Now, let's create a dataset without the duplicates:
+
+```{r}
+unique_transparency = transparency[!duplicated(transparency$pmid), ]
+```
+
+## **General characteristics**
+
+Number of all papers (open access and non open access), open-access papers and open-access percentage.
+
+First, we delete duplicated ISSNs to capture the true number of all articles (without any duplication):
+
+```{r}
+# ISSNs = read.csv("data/journals.csv")
+# ISSNs = ISSNs %>% filter(Category != "MULTIDISCIPLINARY SCIENCES - SCIE")
+# ISSNs_unique = ISSNs[!duplicated(ISSNs$ISSN), ]
+# ISSNs_unique = ISSNs_unique %>% mutate(search.term = paste0("ISSN:", ISSN))
+# ISSNsQuery_unique = ISSNs_unique %>% 
+#        group_by(Category) %>% summarize(query = paste(search.term, 
+#                                                       collapse = " OR "))
+# ISSNsQuery_unique = as.data.frame(ISSNsQuery_unique)
+
+# hits_list_unique = data.frame()
+# hits_list_unique = sapply(ISSNsQuery_unique$query, function(issn) {
+#        search_string = paste0(
+#                "(",
+#                issn,
+#                ") ",
+#                'AND (SRC:"MED") 
+#    AND (LANG:"eng" OR LANG:"en" OR LANG:"us") 
+#    AND (FIRST_PDATE:[1990-01-01 TO 2024-03-16])
+#    AND (PUB_TYPE:"research-article" OR PUB_TYPE:"review-article" OR PUB_TYPE:"systematic-review")'
+#        )
+#        epmc_hits(query = search_string)
+#})
+
+# hits_list_unique = as.data.frame(hits_list_unique)
+# rownames(hits_list_unique) = ISSNsQuery$Category
+# write.csv(hits_list_unique, "data/hits_list_unique.csv")
+hits_list_unique = read.csv("data/hits_list_unique.csv")
+```
+
+Now, we do the same but with duplicates to have the exact number of articles for each category:
+
+```{r}
+# ISSNs = ISSNs %>% mutate(search.term = paste0("ISSN:", ISSN))
+# ISSNsQuery = ISSNs %>% 
+#        group_by(Category) %>% summarize(query = paste(search.term, 
+#                                                       collapse = " OR "))
+# ISSNsQuery = as.data.frame(ISSNsQuery)
+
+# hits_list = data.frame()
+# hits_list = sapply(ISSNsQuery$query, function(issn) {
+#        search_string = paste0(
+#                "(",
+#                issn,
+#                ") ",
+#                'AND (SRC:"MED") 
+#    AND (LANG:"eng" OR LANG:"en" OR LANG:"us") 
+#    AND (FIRST_PDATE:[1990-01-01 TO 2024-03-16])
+#    AND (PUB_TYPE:"research-article" OR PUB_TYPE:"review-article" OR PUB_TYPE:"systematic-review")'
+#        )
+#        epmc_hits(query = search_string)
+#})
+
+# hits_list = as.data.frame(hits_list)
+# rownames(hits_list) = ISSNsQuery$Category
+# write.csv(hits_list, "data/hits_list.csv")
+
+hits_list = read.csv("data/hits_list.csv")
+```
+
+Now, calculating open-access percentage:
+
+```{r}
+kable(data.frame(hits_all = sum(hits_list_unique$hits_list_unique), 
+           hits_oa = nrow(unique_transparency),
+           oa_percentage = round((nrow(unique_transparency)/sum(hits_list_unique$hits_list_unique))*100, 1)))
+```
+
+Let's take a look at the number of papers published in each year and overall. To do so, first, we add the real publication year and month to the datasets. The real publication year/month is the year/month the paper was first appear online stored in firstPublicationDate column.
+
+```{r}
+unique_transparency = unique_transparency %>%
+  mutate(year_firstpub = year(
+    as.POSIXlt(firstPublicationDate, 
+               format = "%Y-%m-%d")),
+    month_firstpub = month(
+      as.POSIXlt(firstPublicationDate, 
+               format = "%Y-%m-%d")
+    )
+    )
+
+unique_transparency = unique_transparency %>%
+        mutate(pubYear_modified = 
+                       ifelse(year_firstpub < 2000, "< 2000",
+                     ifelse((year_firstpub >= 2000) & (year_firstpub < 2005), "2000–2004",
+                     ifelse((year_firstpub >= 2005) & (year_firstpub < 2010), "2005–2009",
+                     year_firstpub))))
+
+transparency = transparency %>%
+  mutate(year_firstpub = year(
+    as.POSIXlt(firstPublicationDate, 
+               format = "%Y-%m-%d")),
+    month_firstpub = month(
+      as.POSIXlt(firstPublicationDate, 
+               format = "%Y-%m-%d")
+    )
+    )
+
+transparency = transparency %>%
+        mutate(pubYear_modified = 
+                       ifelse(year_firstpub < 2000, "< 2000",
+                     ifelse((year_firstpub >= 2000) & (year_firstpub < 2005), "2000–2004",
+                     ifelse((year_firstpub >= 2005) & (year_firstpub < 2010), "2005–2009",
+                     year_firstpub))))
+```
+
+Now, the number of open access papers per year:
+
+```{r}
+unique_transparency %>% tbl_summary(include = c(pubYear_modified), 
+                         digits = list(all_categorical() ~ c(0, 1)))
+```
+
+Paper types frequency:
+
+```{r}
+unique_transparency %>% tbl_summary(include = c(type), 
+                         digits = list(all_categorical() ~ c(0, 1)))
+```
+
+Now, comparing journals:
+
+```{r}
+set.seed(1280)
+
+unique_transparency %>% 
+        select(journalTitle,
+               is_coi_pred,
+               is_fund_pred,
+               is_register_pred,
+               is_open_data,
+               is_open_code) %>%
+        mutate(journalTitle = fct_lump(journalTitle, n = 5)) %>%
+        tbl_summary(by = journalTitle, 
+                    percent = "column",
+                    label = c(is_coi_pred ~ "COI disclosure",
+                              is_fund_pred ~ "Funding disclosure",
+                              is_register_pred ~ "Protocol registration", 
+                              is_open_data ~ "Data sharing", 
+                              is_open_code ~ "Code sharing"),
+                    digits = list(all_categorical() ~ c(0, 1))) %>%
+        add_p(test.args = all_tests("fisher.test") ~ list(simulate.p.value=TRUE)) %>%
+        as_flex_table()
+```
+
+Publishers:
+
+```{r}
+set.seed(1280)
+
+unique_transparency %>% 
+        select(scimago_publisher,
+               is_coi_pred,
+               is_fund_pred,
+               is_register_pred,
+               is_open_data,
+               is_open_code) %>%
+        mutate(scimago_publisher = fct_lump(scimago_publisher, n = 5)) %>%
+        tbl_summary(by = scimago_publisher, 
+                    percent = "column",
+                    label = c(is_coi_pred ~ "COI disclosure",
+                              is_fund_pred ~ "Funding disclosure",
+                              is_register_pred ~ "Protocol registration", 
+                              is_open_data ~ "Data sharing", 
+                              is_open_code ~ "Code sharing"),
+                    digits = list(all_categorical() ~ c(0, 1))) %>%
+        add_p(test.args = all_tests("fisher.test") ~ list(simulate.p.value=TRUE)) %>%
+        as_flex_table()
+```
+
+What about article types?
+
+```{r}
+set.seed(1280)
+
+unique_transparency %>% 
+        select(type,
+               is_coi_pred,
+               is_fund_pred,
+               is_register_pred,
+               is_open_data,
+               is_open_code) %>%
+        mutate(type = fct_lump(type, n = 4)) %>%
+        tbl_summary(by = type, 
+                    percent = "column",
+                    label = c(is_coi_pred ~ "COI disclosure",
+                              is_fund_pred ~ "Funding disclosure",
+                              is_register_pred ~ "Protocol registration", 
+                              is_open_data ~ "Data sharing", 
+                              is_open_code ~ "Code sharing"),
+                    digits = list(all_categorical() ~ c(0, 1))) %>%
+        add_p(test.args = all_tests("fisher.test") ~ list(simulate.p.value=TRUE)) %>%
+        as_flex_table()
+```
+
+## **Category-specific characteristics**
+
+Top categories in terms of number of papers
+
+Top 3 highest:
+
+```{r}
+transparency %>% group_by(category) %>% summarise(n = n(), p = round(n/nrow(transparency)*100, 2)) %>% arrange(desc(n)) %>% head(., 3)
+```
+
+Top 3 lowest:
+
+```{r}
+transparency %>% group_by(category) %>% summarise(n = n(), p = round(n/nrow(transparency)*100, 2)) %>% arrange(n) %>% head(., 3)
+```
+
+Fields with the highest number of trials and reviews
+
+Trials:
+
+```{r}
+transparency %>% filter(is_trial == T) %>% group_by(category) %>% summarise(n = n(), p=round(n/nrow(filter(unique_transparency, is_trial == T))*100, 2)) %>% arrange(desc(n)) %>% head(., 3)
+```
+
+Reviews:
+
+```{r}
+transparency %>% filter(is_review == T) %>% group_by(category) %>% summarise(n = n(), p=round(n/nrow(filter(unique_transparency, is_review == T))*100, 2)) %>% arrange(desc(n)) %>% head(., 3)
+```
+
+### Appendix 2
+
+Column 1: Number of journals in each category
+
+```{r}
+ISSNs = read.csv("data/journals.csv")
+ISSNs = ISSNs %>% filter(Category != "MULTIDISCIPLINARY SCIENCES - SCIE")
+appendix2 = data.frame()
+appendix2 = ISSNs %>% group_by(Category) %>% summarise(all_journals = n())
+```
+
+Column 2: Available journals in each category based on ISSN
+
+```{r}
+appendix2$available_journals_issn = (transparency %>% group_by(category) %>% summarise(available_journals_issn = n_distinct(journalIssn)) %>% as.data.frame() %>% select(available_journals_issn))$available_journals_issn
+```
+
+Column 3: Percentage based on column 2
+
+```{r}
+appendix2$availability_percentage_issn = appendix2$available_journals_issn/appendix2$all_journals
+```
+
+Column 4: Available journals in each category based on journal title
+
+```{r}
+appendix2$available_journals_name = (transparency %>% group_by(category) %>% summarise(available_journals_name = n_distinct(journalTitle)) %>% select(available_journals_name) %>% as.data.frame())$available_journals_name
+```
+
+Column 5: Percentage based on column 4
+
+```{r}
+appendix2$availability_percentage_name = round(appendix2$available_journals_name/appendix2$all_journals*100, 2)
+```
+
+Column 6: All articles
+
+```{r}
+appendix2$all_articles_20240316 = hits_list$hits_list
+```
+
+Column 7: Open-access articles
+
+```{r}
+appendix2$oa_articles_20240316 = table(transparency$category)
+```
+
+Column 8: Open-access percentage
+
+```{r}
+appendix2$percentage_oa = round(appendix2$oa_articles_20240316/appendix2$all_articles_20240316*100, 2)
+```
+
+Now, we can save it:
+
+```{r}
+# write.csv(appendix2, "appendix/Appendix2.csv", row.names = F)
+```
+
+Open-access availability based on name:
+
+```{r}
+c(mean(appendix2$availability_percentage_name), sd(appendix2$availability_percentage_name))
+```
+
+Top 3 categories with the most open-access availability:
+
+```{r}
+appendix2 %>% select(Category, oa_articles_20240316, percentage_oa) %>% arrange(desc(percentage_oa)) %>% head(3)
+```
+
+Top 3 categories with the least open-access availability:
+
+```{r}
+appendix2 %>% select(Category, oa_articles_20240316, percentage_oa) %>% arrange(percentage_oa) %>% head(3)
+```
+
+And categories:
+
+```{r}
+set.seed(1280)
+
+transparency %>% 
+        select(category,
+               is_coi_pred,
+               is_fund_pred,
+               is_register_pred,
+               is_open_data,
+               is_open_code) %>%
+        mutate(category = fct_lump(category, n = 5)) %>%
+        tbl_summary(by = category, 
+                    percent = "column",
+                    label = c(is_coi_pred ~ "COI disclosure",
+                              is_fund_pred ~ "Funding disclosure",
+                              is_register_pred ~ "Protocol registration", 
+                              is_open_data ~ "Data sharing", 
+                              is_open_code ~ "Code sharing"),
+                    digits = list(all_categorical() ~ c(0, 1))) %>%
+        add_p(test.args = all_tests("fisher.test") ~ list(simulate.p.value=TRUE)) %>%
+        as_flex_table()
+```
+
+## **Overall adherence to transparency practices**
+
+### All articles
+
+Number and percentage:
+
+```{r}
+
+kable(rbind(
+        COI = data.frame(number = length(unique_transparency$is_coi_pred[unique_transparency$is_coi_pred == TRUE]),
+           percentage = round(length(unique_transparency$is_coi_pred[unique_transparency$is_coi_pred == TRUE])/nrow(unique_transparency)*100, 1)
+           ), 
+         Fund = data.frame(number = length(unique_transparency$is_fund_pred[unique_transparency$is_fund_pred == TRUE]),
+           percentage = round(length(unique_transparency$is_fund_pred[unique_transparency$is_fund_pred == TRUE])/nrow(unique_transparency)*100, 1)
+           ),
+        Register = data.frame(number = length(unique_transparency$is_register_pred[unique_transparency$is_register_pred == TRUE]),
+           percentage = round(length(unique_transparency$is_register_pred[unique_transparency$is_register_pred == TRUE])/nrow(unique_transparency)*100, 1)
+           ),
+        Data = data.frame(number = length(unique_transparency$is_open_data[unique_transparency$is_open_data == TRUE]),
+           percentage = round(length(unique_transparency$is_open_data[unique_transparency$is_open_data == TRUE])/nrow(unique_transparency)*100, 1)
+           ),
+        Code = data.frame(number = length(unique_transparency$is_open_code[unique_transparency$is_open_code == TRUE]),
+           percentage = round(length(unique_transparency$is_open_code[unique_transparency$is_open_code == TRUE])/nrow(unique_transparency)*100, 1)
+           )
+           ))
+```
+
+And CIs:
+
+```{r}
+kable(rbind(COI=round(epi.prev(pos = length(unique_transparency$is_coi_pred[unique_transparency$is_coi_pred == TRUE]),
+         tested = nrow(unique_transparency),
+         se = 0.992,
+         sp = 0.995)$ap, 
+      1),
+      Funding=round(epi.prev(pos = length(unique_transparency$is_fund_pred[unique_transparency$is_fund_pred == TRUE]),
+         tested = nrow(unique_transparency),
+         se = 0.997,
+         sp = 0.981)$ap, 
+      1),
+      Protocol=round(epi.prev(pos = length(unique_transparency$is_register_pred[unique_transparency$is_register_pred == TRUE]),
+         tested = nrow(unique_transparency),
+         se = 0.955,
+         sp = 0.997)$ap, 
+      1),
+      Data=round(epi.prev(pos = length(unique_transparency$is_open_data[unique_transparency$is_open_data == TRUE]),
+         tested = nrow(unique_transparency),
+         se = 0.758,
+         sp = 0.986)$ap, 
+      1),
+      Code=round(epi.prev(pos = length(unique_transparency$is_open_code[unique_transparency$is_open_code == TRUE]),
+         tested = nrow(unique_transparency),
+         se = 0.587,
+         sp = 0.997)$ap, 
+      1)))
+```
+
+## Adherence by number of practices
+
+```{r}
+unique_transparency = unique_transparency %>% mutate(sumOfIndicators = rowSums(unique_transparency %>% select(is_coi_pred, is_register_pred, is_fund_pred, is_open_data, is_open_code)))
+```
+
+Number of papers with each number of TRUE indicators:
+
+```{r}
+c(five_ind = nrow(filter(unique_transparency, sumOfIndicators == 5)),
+  four_ind = nrow(filter(unique_transparency, sumOfIndicators == 4)),
+  three_ind = nrow(filter(unique_transparency, sumOfIndicators == 3)),
+  two_ind = nrow(filter(unique_transparency, sumOfIndicators == 2)),
+  one_ind = nrow(filter(unique_transparency, sumOfIndicators == 1)),
+  zero_ind = nrow(filter(unique_transparency, sumOfIndicators == 0)))
+```
+
+Percentage of papers with each number of TRUE indicators:
+
+```{r}
+c(five_ind = round(nrow(filter(unique_transparency, sumOfIndicators == 5))/nrow(unique_transparency)*100, 4),
+  four_ind = round(nrow(filter(unique_transparency, sumOfIndicators == 4))/nrow(unique_transparency)*100, 1),
+  three_ind = round(nrow(filter(unique_transparency, sumOfIndicators == 3))/nrow(unique_transparency)*100, 1),
+  two_ind = round(nrow(filter(unique_transparency, sumOfIndicators == 2))/nrow(unique_transparency)*100, 1),
+  one_ind = round(nrow(filter(unique_transparency, sumOfIndicators == 1))/nrow(unique_transparency)*100, 1),
+  zero_ind = round(nrow(filter(unique_transparency, sumOfIndicators == 0))/nrow(unique_transparency)*100, 1))
+```
+
+### Reviews
+
+Number and percentage:
+
+```{r}
+reviews = unique_transparency %>% filter(is_review == T)
+
+kable(rbind(
+        COI = data.frame(number = length(reviews$is_coi_pred[reviews$is_coi_pred == TRUE]),
+           percentage = round(length(reviews$is_coi_pred[reviews$is_coi_pred == TRUE])/nrow(reviews)*100, 1)
+           ), 
+         Fund = data.frame(number = length(reviews$is_fund_pred[reviews$is_fund_pred == TRUE]),
+           percentage = round(length(reviews$is_fund_pred[reviews$is_fund_pred == TRUE])/nrow(reviews)*100, 1)
+           ),
+        Register = data.frame(number = length(reviews$is_register_pred[reviews$is_register_pred == TRUE]),
+           percentage = round(length(reviews$is_register_pred[reviews$is_register_pred == TRUE])/nrow(reviews)*100, 1)
+           ),
+        Data = data.frame(number = length(reviews$is_open_data[reviews$is_open_data == TRUE]),
+           percentage = round(length(reviews$is_open_data[reviews$is_open_data == TRUE])/nrow(reviews)*100, 1)
+           ),
+        Code = data.frame(number = length(reviews$is_open_code[reviews$is_open_code == TRUE]),
+           percentage = round(length(reviews$is_open_code[reviews$is_open_code == TRUE])/nrow(reviews)*100, 1)
+           )
+           ))
+```
+
+And CIs:
+
+```{r}
+kable(rbind(COI=round(epi.prev(pos = length(reviews$is_coi_pred[reviews$is_coi_pred == TRUE]),
+         tested = nrow(reviews),
+         se = 0.992,
+         sp = 0.995)$ap, 
+      1),
+      Funding=round(epi.prev(pos = length(reviews$is_fund_pred[reviews$is_fund_pred == TRUE]),
+         tested = nrow(reviews),
+         se = 0.997,
+         sp = 0.981)$ap, 
+      1),
+      Protocol=round(epi.prev(pos = length(reviews$is_register_pred[reviews$is_register_pred == TRUE]),
+         tested = nrow(reviews),
+         se = 0.955,
+         sp = 0.997)$ap, 
+      1),
+      Data=round(epi.prev(pos = length(reviews$is_open_data[reviews$is_open_data == TRUE]),
+         tested = nrow(reviews),
+         se = 0.758,
+         sp = 0.986)$ap, 
+      1),
+      Code=round(epi.prev(pos = length(reviews$is_open_code[reviews$is_open_code == TRUE]),
+         tested = nrow(reviews),
+         se = 0.587,
+         sp = 0.997)$ap, 
+      1)))
+```
+
+Percentage of papers with each number of TRUE indicators:
+
+```{r}
+c(five_ind = round(nrow(filter(reviews, sumOfIndicators == 5))/nrow(reviews)*100, 4),
+  four_ind = round(nrow(filter(reviews, sumOfIndicators == 4))/nrow(reviews)*100, 1),
+  three_ind = round(nrow(filter(reviews, sumOfIndicators == 3))/nrow(reviews)*100, 1),
+  two_ind = round(nrow(filter(reviews, sumOfIndicators == 2))/nrow(reviews)*100, 1),
+  one_ind = round(nrow(filter(reviews, sumOfIndicators == 1))/nrow(reviews)*100, 1),
+  zero_ind = round(nrow(filter(reviews, sumOfIndicators == 0))/nrow(reviews)*100, 1))
+```
+
+### Trials
+
+Number and percentage:
+
+```{r}
+trials = unique_transparency %>% filter(is_trial == T)
+
+kable(rbind(
+        COI = data.frame(number = length(trials$is_coi_pred[trials$is_coi_pred == TRUE]),
+           percentage = round(length(trials$is_coi_pred[trials$is_coi_pred == TRUE])/nrow(trials)*100, 1)
+           ), 
+         Fund = data.frame(number = length(trials$is_fund_pred[trials$is_fund_pred == TRUE]),
+           percentage = round(length(trials$is_fund_pred[trials$is_fund_pred == TRUE])/nrow(trials)*100, 1)
+           ),
+        Register = data.frame(number = length(trials$is_register_pred[trials$is_register_pred == TRUE]),
+           percentage = round(length(trials$is_register_pred[trials$is_register_pred == TRUE])/nrow(trials)*100, 1)
+           ),
+        Data = data.frame(number = length(trials$is_open_data[trials$is_open_data == TRUE]),
+           percentage = round(length(trials$is_open_data[trials$is_open_data == TRUE])/nrow(trials)*100, 1)
+           ),
+        Code = data.frame(number = length(trials$is_open_code[trials$is_open_code == TRUE]),
+           percentage = round(length(trials$is_open_code[trials$is_open_code == TRUE])/nrow(trials)*100, 1)
+           )
+           ))
+```
+
+And CIs:
+
+```{r}
+kable(rbind(COI=round(epi.prev(pos = length(trials$is_coi_pred[trials$is_coi_pred == TRUE]),
+         tested = nrow(trials),
+         se = 0.992,
+         sp = 0.995)$ap, 
+      1),
+      Funding=round(epi.prev(pos = length(trials$is_fund_pred[trials$is_fund_pred == TRUE]),
+         tested = nrow(trials),
+         se = 0.997,
+         sp = 0.981)$ap, 
+      1),
+      Protocol=round(epi.prev(pos = length(trials$is_register_pred[trials$is_register_pred == TRUE]),
+         tested = nrow(trials),
+         se = 0.955,
+         sp = 0.997)$ap, 
+      1),
+      Data=round(epi.prev(pos = length(trials$is_open_data[trials$is_open_data == TRUE]),
+         tested = nrow(trials),
+         se = 0.758,
+         sp = 0.986)$ap, 
+      1),
+      Code=round(epi.prev(pos = length(trials$is_open_code[trials$is_open_code == TRUE]),
+         tested = nrow(trials),
+         se = 0.587,
+         sp = 0.997)$ap, 
+      1)))
+```
+
+Percentage of papers with each number of TRUE indicators:
+
+```{r}
+c(five_ind = round(nrow(filter(trials, sumOfIndicators == 5))/nrow(trials)*100, 4),
+  four_ind = round(nrow(filter(trials, sumOfIndicators == 4))/nrow(trials)*100, 1),
+  three_ind = round(nrow(filter(trials, sumOfIndicators == 3))/nrow(trials)*100, 1),
+  two_ind = round(nrow(filter(trials, sumOfIndicators == 2))/nrow(trials)*100, 1),
+  one_ind = round(nrow(filter(trials, sumOfIndicators == 1))/nrow(trials)*100, 1),
+  zero_ind = round(nrow(filter(trials, sumOfIndicators == 0))/nrow(trials)*100, 1))
+```
+
+## Transparency practices by fields over time
+
+### Overall trend
+
+First, we calculate the proportion of adherence to each domain overall and yearly adherence to each domain:
+
+```{r}
+# Overall
+proportions = unique_transparency %>%
+        summarise("COI disclosure" = sum(is_coi_pred == TRUE),
+                  "Funding disclosure" = sum(is_fund_pred == TRUE),
+                  "Protocol registration" = sum(is_register_pred == TRUE),
+                  "Data sharing" = sum(is_open_data == TRUE),
+                  "Code sharing" = sum(is_open_code == TRUE)) %>%
+        t() %>%
+        as.data.frame() %>%
+        rownames_to_column(var = "indicator") %>%
+        mutate(percentage = round(V1/nrow(unique_transparency)*100, 1))
+
+
+indicator_by_year = 
+        unique_transparency %>% 
+        select(pubYear_modified,
+               is_coi_pred,
+               is_fund_pred,
+               is_register_pred,
+               is_open_data,
+               is_open_code) %>%
+        gather("indicator", "value", -pubYear_modified) %>%
+        count(pubYear_modified, indicator, value) %>%
+        mutate(indicator = dplyr::recode(indicator,
+                                  is_coi_pred = "COI disclosure",
+                                  is_fund_pred = "Funding disclosure",
+                                  is_register_pred = "Protocol registration",
+                                  is_open_data = "Data sharing",
+                                  is_open_code = "Code sharing")) %>%
+        complete(indicator, value, pubYear_modified, fill = list(n = 0)) %>%
+        group_by(pubYear_modified, indicator) %>% 
+        mutate(p = n / sum(n)) %>%
+        filter(value) %>%
+        ungroup()
+
+
+# For reviews
+proportions_reviews = unique_transparency %>%
+        filter(is_review == T) %>%
+        summarise("COI disclosure" = sum(is_coi_pred == TRUE),
+                  "Funding disclosure" = sum(is_fund_pred == TRUE),
+                  "Protocol registration" = sum(is_register_pred == TRUE),
+                  "Data sharing" = sum(is_open_data == TRUE),
+                  "Code sharing" = sum(is_open_code == TRUE)) %>%
+        t() %>%
+        as.data.frame() %>%
+        rownames_to_column(var = "indicator") %>%
+        mutate(percentage = round(V1/nrow(filter(unique_transparency, is_review == T))*100, 1))
+
+
+indicator_by_year_reviews = 
+        unique_transparency %>% 
+        filter(is_review == T) %>%
+        select(pubYear_modified,
+               is_coi_pred,
+               is_fund_pred,
+               is_register_pred,
+               is_open_data,
+               is_open_code) %>%
+        gather("indicator", "value", -pubYear_modified) %>%
+        count(pubYear_modified, indicator, value) %>%
+        mutate(indicator = dplyr::recode(indicator,
+                                  is_coi_pred = "COI disclosure",
+                                  is_fund_pred = "Funding disclosure",
+                                  is_register_pred = "Protocol registration",
+                                  is_open_data = "Data sharing",
+                                  is_open_code = "Code sharing")) %>%
+        complete(indicator, value, pubYear_modified, fill = list(n = 0)) %>%
+        group_by(pubYear_modified, indicator) %>% 
+        mutate(p = n / sum(n)) %>%
+        filter(value) %>%
+        ungroup()
+
+
+# For trials
+proportions_trials = unique_transparency %>%
+        filter(is_trial == T) %>%
+        summarise("COI disclosure" = sum(is_coi_pred == TRUE),
+                  "Funding disclosure" = sum(is_fund_pred == TRUE),
+                  "Protocol registration" = sum(is_register_pred == TRUE),
+                  "Data sharing" = sum(is_open_data == TRUE),
+                  "Code sharing" = sum(is_open_code == TRUE)) %>%
+        t() %>%
+        as.data.frame() %>%
+        rownames_to_column(var = "indicator") %>%
+        mutate(percentage = round(V1/nrow(filter(unique_transparency, is_trial == T))*100, 1))
+
+
+indicator_by_year_trials = 
+        unique_transparency %>% 
+        filter(is_trial == T) %>%
+        select(pubYear_modified,
+               is_coi_pred,
+               is_fund_pred,
+               is_register_pred,
+               is_open_data,
+               is_open_code) %>%
+        gather("indicator", "value", -pubYear_modified) %>%
+        count(pubYear_modified, indicator, value) %>%
+        mutate(indicator = dplyr::recode(indicator,
+                                  is_coi_pred = "COI disclosure",
+                                  is_fund_pred = "Funding disclosure",
+                                  is_register_pred = "Protocol registration",
+                                  is_open_data = "Data sharing",
+                                  is_open_code = "Code sharing")) %>%
+        complete(indicator, value, pubYear_modified, fill = list(n = 0)) %>%
+        group_by(pubYear_modified, indicator) %>% 
+        mutate(p = n / sum(n)) %>%
+        filter(value) %>%
+        ungroup()
+
+```
+
+Now, we create plots:
+
+```{r}
+
+### Figure 1A - left
+p1 =  proportions %>%
+  ggplot() +
+  aes(
+    x = reorder(indicator, V1),
+    y = V1,
+    fill = indicator
+  ) +
+  geom_col() +
+  geom_text(aes(label = percentage), hjust = -0.1, size = 4) +
+  coord_flip() +
+  labs(title = "A - All articles",
+       x = NULL,
+       y = NULL) +
+  theme_minimal() +
+  theme(legend.position = "none",
+        panel.grid.major.y = element_blank(), 
+        axis.text = element_text(size = 10),
+        plot.title = element_text(size=14, face="bold")) +
+  scale_fill_manual(values = c("red", viridis::viridis(6)))
+
+### Figure 1A - right
+
+data_ends = indicator_by_year %>%
+        filter(pubYear_modified == 2024)
+
+plasma_pal <- c("blue", viridis::plasma(n = 5))
+
+p2 = indicator_by_year %>%
+  ggplot() +
+  aes(
+    x = pubYear_modified,
+    y = p,
+    group = indicator,
+    color = indicator
+  ) +
+  geom_line() + 
+  labs(title = NULL,
+       y = NULL,
+       x = NULL) +
+   geom_text_repel(
+    aes(label = indicator),
+    data = data_ends,
+    nudge_x = 2,
+    size = 3
+  ) +
+  scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
+  theme_minimal() +
+  theme(legend.position = "none") + 
+  scale_color_manual(values = c("red", viridis::viridis(6)))+
+         theme(axis.text.x = element_text(angle = 45), 
+        axis.text = element_text(size = 10))
+
+
+### Fig 1A
+figure1A = ggarrange(p1, p2,
+                    ncol = 2, nrow = 1, 
+                    align = "hv", common.legend = F)
+
+### Figure 1B - left
+p1_reviews =  proportions_reviews %>%
+  ggplot() +
+  aes(
+    x = reorder(indicator, V1),
+    y = V1,
+    fill = indicator
+  ) +
+  geom_col() +
+  geom_text(aes(label = percentage), hjust = -0.1, size = 4) +
+  coord_flip() +
+  labs(title = "B - Reviews",
+       x = NULL,
+       y = NULL) +
+  theme_minimal() +
+  theme(legend.position = "none",
+        panel.grid.major.y = element_blank(), 
+        axis.text = element_text(size = 10),
+        plot.title = element_text(size=14, face="bold")) +
+  scale_fill_manual(values = c("red", viridis::viridis(6)))
+
+### Figure 1B - right
+
+data_ends_reviews = indicator_by_year_reviews %>%
+        filter(pubYear_modified == 2024)
+
+p2_reviews = indicator_by_year_reviews %>%
+  ggplot() +
+  aes(
+    x = pubYear_modified,
+    y = p,
+    group = indicator,
+    color = indicator
+  ) +
+  geom_line() + 
+  labs(title = NULL,
+       y = "Proportion of articles",
+       x = NULL) +
+   geom_text_repel(
+    aes(label = indicator),
+    data = data_ends_reviews,
+    nudge_x = 2,
+    size = 3
+  ) +
+  scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
+  theme_minimal() +
+  theme(legend.position = "none") + 
+  scale_color_manual(values = c("red", viridis::viridis(6)))+
+         theme(axis.text.x = element_text(angle = 45), 
+        axis.text = element_text(size = 10))
+
+
+### Fig 1B
+figure1B = ggarrange(p1_reviews, p2_reviews,
+                    ncol = 2, nrow = 1, 
+                    align = "hv", common.legend = F)
+
+
+### Figure 1C - left
+p1_trials =  proportions_trials %>%
+  ggplot() +
+  aes(
+    x = reorder(indicator, V1),
+    y = V1,
+    fill = indicator
+  ) +
+  geom_col() +
+  geom_text(aes(label = percentage), hjust = -0.1, size = 4) +
+  coord_flip() +
+  labs(title = "C - Trials",
+       x = NULL,
+       y = "Number of articles") +
+  theme_minimal() +
+  theme(legend.position = "none",
+        panel.grid.major.y = element_blank(), 
+        axis.text = element_text(size = 10),
+        plot.title = element_text(size=14, face="bold")) +
+  scale_fill_manual(values = c("red", viridis::viridis(6)))
+
+### Figure 1C - right
+
+data_ends_trials = indicator_by_year_trials %>%
+        filter(pubYear_modified == 2024)
+
+p2_trials = indicator_by_year_trials %>%
+  ggplot() +
+  aes(
+    x = pubYear_modified,
+    y = p,
+    group = indicator,
+    color = indicator
+  ) +
+  geom_line() + 
+  labs(title = NULL,
+       y = NULL,
+       x = "Year") +
+   geom_text_repel(
+    aes(label = indicator),
+    data = data_ends_trials,
+    nudge_x = 2,
+    size = 3
+  ) +
+  scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
+  theme_minimal() +
+  theme(legend.position = "none") + 
+  scale_color_manual(values = c("red", viridis::viridis(6)))+
+         theme(axis.text.x = element_text(angle = 45), 
+        axis.text = element_text(size = 10))
+
+
+### Fig 1C
+figure1C = ggarrange(p1_trials, p2_trials,
+                    ncol = 2, nrow = 1, 
+                    align = "hv", common.legend = F)
+
+
+# Figure 1
+figure1 = ggarrange(figure1A, figure1B, figure1C,
+                    ncol = 1, nrow = 3, 
+                    align = "hv", common.legend = F)
+
+
+#ggsave("figures/Figure1.tiff", figure1, width = 35, height = 30, units = "cm", dpi = 800, compression = "lzw")
+#ggsave("figures/Figure1.png", figure1, width = 35, height = 30, units = "cm", dpi = 800)
+```
+
+```{r, fig.width=7, fig.height=6}
+figure1
+```
+
+Now, testing the correlation between year and each transparency indicator:
+
+```{r}
+indicator_by_year_all = 
+        unique_transparency %>% 
+        select(year_firstpub,
+               is_coi_pred,
+               is_fund_pred,
+               is_register_pred,
+               is_open_data,
+               is_open_code) %>%
+        gather("indicator", "value", -year_firstpub) %>%
+        count(year_firstpub, indicator, value) %>%
+        mutate(indicator = dplyr::recode(indicator,
+                                  is_coi_pred = "COI disclosure",
+                                  is_fund_pred = "Funding disclosure",
+                                  is_register_pred = "Protocol registration",
+                                  is_open_data = "Data sharing",
+                                  is_open_code = "Code sharing")) %>%
+        complete(indicator, value, year_firstpub, fill = list(n = 0)) %>%
+        group_by(year_firstpub, indicator) %>% 
+        mutate(p = n / sum(n)) %>%
+        filter(value) %>%
+        ungroup()
+
+cor.test(filter(indicator_by_year_all, indicator == "COI disclosure")$year_firstpub, filter(indicator_by_year_all, indicator == "COI disclosure")$p)
+
+cor.test(filter(indicator_by_year_all, indicator == "Funding disclosure")$year_firstpub, filter(indicator_by_year_all, indicator == "Funding disclosure")$p)
+
+cor.test(filter(indicator_by_year_all, indicator == "Protocol registration")$year_firstpub, filter(indicator_by_year_all, indicator == "Protocol registration")$p)
+
+cor.test(filter(indicator_by_year_all, indicator == "Data sharing")$year_firstpub, filter(indicator_by_year_all, indicator == "Data sharing")$p)
+
+cor.test(filter(indicator_by_year_all, indicator == "Code sharing")$year_firstpub, filter(indicator_by_year_all, indicator == "Code sharing")$p)
+```
+
+### Appendix 4: Yearly trends for each field
+
+```{r,warning=FALSE}
+
+indicator_by_year_all_fields = 
+        transparency %>%
+        select(category,
+                pubYear_modified,
+               is_coi_pred,
+               is_fund_pred,
+               is_register_pred,
+               is_open_data,
+               is_open_code) %>%
+        gather("indicator", "value", -pubYear_modified, -category) %>%
+        count(category, pubYear_modified, indicator, value) %>%
+        mutate(indicator = dplyr::recode(indicator,
+                                  is_coi_pred = "COI Disclosure",
+                                  is_fund_pred = "Funding disclosure",
+                                  is_register_pred = "Protocol registration",
+                                  is_open_data = "Data sharing",
+                                  is_open_code = "Code sharing")) %>%
+        complete(indicator, value, pubYear_modified, category, fill = list(n = 0)) %>%
+        group_by(category, pubYear_modified, indicator) %>% 
+        mutate(p = n / sum(n)) %>%
+        filter(value) %>%
+        ungroup()
+
+transparency_all_fields = indicator_by_year_all_fields %>% 
+        ggplot() +
+        aes(x = pubYear_modified, 
+            y = p,
+            group = indicator,
+            color = indicator) +
+        geom_line(size = 0.75) +
+        facet_wrap(~ category, ncol = 10) +
+        scale_y_continuous(limits = c(0, 1), 
+                           labels = scales::percent) +
+        scale_color_discrete(name = NULL) +
+        scale_fill_discrete(breaks = c("COI Disclosure",
+                                       "Funding disclosure",
+                                       "Protocol registration",
+                                       "Data sharing",
+                                       "Code sharing")) +
+        labs(y = "Proportion of articles\n", 
+             x = "\nYear") +
+        theme(panel.grid.minor = element_blank(),
+              legend.position = c(0.955, 0.001),
+              axis.text.x = element_text(angle = 70, vjust = 0.9, hjust=1, size = 7))
+
+transparency_all_fields
+
+#ggsave("appendix/Appendix4.tiff", transparency_all_fields, width = 18, height = 8, units = "in", dpi = 700, compression = "lzw")
+#ggsave("appendix/Appendix4.png", transparency_all_fields, width = 18, height = 8, units = "in", dpi = 300)
+```
+
+#### GLMM: Yearly trend of adherence to transparency practices among different fields
+
+COI disclosure:
+
+```{r,warning=FALSE}
+coi_glmer = glmer(is_coi_pred ~ year_firstpub + (1|category), data = transparency, family = binomial, control = glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=2e5)), nAGQ = 10)
+
+summary(coi_glmer)
+```
+
+Funding disclosure:
+
+```{r,warning=FALSE}
+fund_glmer = glmer(is_fund_pred ~ year_firstpub + (1|category), data = transparency, family = binomial, control = glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=2e5)), nAGQ = 10)
+
+summary(fund_glmer)
+```
+
+Protocol registration:
+
+```{r,warning=FALSE}
+register_glmer = glmer(is_register_pred ~ year_firstpub + (1|category), data = transparency, family = binomial, control = glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=2e5)), nAGQ = 10)
+
+summary(register_glmer)
+```
+
+Data sharing:
+
+```{r,warning=FALSE}
+data_glmer = glmer(is_open_data ~ year_firstpub + (1|category), data = transparency, family = binomial, control = glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=2e5)), nAGQ = 10)
+
+summary(data_glmer)
+```
+
+Code sharing:
+
+```{r,warning=FALSE}
+code_glmer = glmer(is_open_code ~ year_firstpub + (1|category), data = transparency, family = binomial, control = glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=2e5)), nAGQ = 10)
+
+summary(code_glmer)
+```
+
+### Appendix 3
+
+```{r}
+percent_calc = function(indicator){
+        x = round(sum(indicator)/n()*100, 1)
+        return(x)
+}
+
+transparency_by_field = transparency %>%
+        group_by(category) %>%
+        summarise("COI Disclosure" = sum(is_coi_pred == TRUE),
+                  "COI Disclosure %" = percent_calc(is_coi_pred == TRUE),
+                  "Funding disclosure" = sum(is_fund_pred == TRUE),
+                  "Funding disclosure %" = percent_calc(is_fund_pred == TRUE),
+                  "Protocol registration" = sum(is_register_pred == TRUE),
+                  "Protocol registration %" = percent_calc(is_register_pred == TRUE),
+                  "Data sharing" = sum(is_open_data == TRUE),
+                  "Data sharing %" = percent_calc(is_open_data == TRUE),
+                  "Code sharing" = sum(is_open_code == TRUE),
+                  "Code sharing %" = percent_calc(is_open_code == TRUE))
+
+# write.csv(transparency_by_field, "appendix/Appendix3.csv", row.names = F)
+```
+
+Now, min and max for each indicator based on category. For COI disclosure:
+
+```{r}
+transparency_by_field %>% arrange(desc(`COI Disclosure %`)) %>% filter(row_number() %in% c(1:3, 57:59)) %>% select(category, `COI Disclosure %`)
+```
+
+For funding disclosure:
+
+```{r}
+transparency_by_field %>% arrange(desc(`Funding disclosure %`)) %>% filter(row_number() %in% c(1:3, 57:59)) %>% select(category, `Funding disclosure %`)
+```
+
+Protocol registration:
+
+```{r}
+transparency_by_field %>% arrange(desc(`Protocol registration %`)) %>% filter(row_number() %in% c(1:3, 57:59)) %>% select(category, `Protocol registration %`)
+```
+
+Data sharing:
+
+```{r}
+transparency_by_field %>% arrange(desc(`Data sharing %`)) %>% filter(row_number() %in% c(1:3, 57:59)) %>% select(category, `Data sharing %`)
+```
+
+Code sharing:
+
+```{r}
+transparency_by_field %>% arrange(desc(`Code sharing %`)) %>% filter(row_number() %in% c(1:3, 57:59)) %>% select(category, `Code sharing %`)
+```
+
+## Association with impact factor and number of citations
+
+Adding impact factor variable:
+
+```{r}
+impact_factors = read.csv("data/journals.csv")
+
+matches = str_extract(unique_transparency$journalIssn, paste(impact_factors$ISSN, collapse = "|"))
+matching_rows = !is.na(matches)
+
+unique_transparency$jif2020[matching_rows] = impact_factors$X2020.JIF[match(matches[matching_rows], impact_factors$ISSN)]
+
+unique_transparency$jif2020 = as.numeric(unique_transparency$jif2020)
+```
+
+### Figure 2
+
+```{r,warning=FALSE}
+unique_transparency$jif2020_5 = factor(quant_groups(unique_transparency$jif2020, 5))
+levels(unique_transparency$jif2020_5) = c("Q1", "Q2", "Q3", "Q4", "Q5")
+unique_transparency = apply_labels(unique_transparency,
+                        jif2020_5 = "Journal Impact Factor",
+                        is_coi_pred = "COI disclosure",
+                        is_fund_pred = "Funding disclosure",
+                        is_register_pred = "Protocol registeration",
+                        is_open_data = "Data sharing",
+                        is_open_code = "Code sharing")
+
+
+
+coi_jif = glm(is_coi_pred ~ jif2020_5 + year_firstpub, family = "binomial", data = unique_transparency)
+fund_jif = glm(is_fund_pred ~ jif2020_5 + year_firstpub, family = "binomial", data = unique_transparency)
+reg_jif = glm(is_register_pred ~ jif2020_5 + year_firstpub, family = "binomial", data = unique_transparency)
+data_jif = glm(is_open_data ~ jif2020_5 + year_firstpub, family = "binomial", data = unique_transparency)
+code_jif = glm(is_open_code ~ jif2020_5 + year_firstpub, family = "binomial", data = unique_transparency)
+
+
+terms = paste(as.character(unique(unique_transparency$year_firstpub)), collapse = ", ")
+
+jif_plot = plot_models(coi_jif, fund_jif, reg_jif, data_jif, code_jif, rm.terms = "year_firstpub", axis.lim = c(0.2,5)) + ggtitle("Journal Impact Factor quintile") + theme_classic() + theme(axis.title.x=element_blank())
+
+unique_transparency$citedByCount_4 = factor(ifelse(unique_transparency$citedByCount == 0,"0",
+                                        ifelse(unique_transparency$citedByCount >0 & unique_transparency$citedByCount <11,"1-10",
+                                               ifelse(unique_transparency$citedByCount >10 & unique_transparency$citedByCount <101,"11-100",
+                                                      ifelse(unique_transparency$citedByCount >100 ,"> 100",NA)))),levels=
+                                   c("0","1-10","11-100","> 100"))
+
+coi_cite = glm(is_coi_pred ~ citedByCount_4 + year_firstpub, family = "binomial", data = unique_transparency)
+fund_cite = glm(is_fund_pred ~ citedByCount_4 + year_firstpub, family = "binomial", data = unique_transparency)
+reg_cite = glm(is_register_pred ~ citedByCount_4 + year_firstpub, family = "binomial", data = unique_transparency)
+data_cite = glm(is_open_data ~ citedByCount_4 + year_firstpub, family = "binomial", data = unique_transparency)
+code_cite = glm(is_open_code ~ citedByCount_4 + year_firstpub, family = "binomial", data = unique_transparency)
+
+cite_plot = plot_models(coi_cite, fund_cite, reg_cite, data_cite, code_cite, rm.terms = "year_firstpub", axis.lim = c(0.2,5)) + ggtitle("Number of citations to article") + theme_classic() + theme(axis.title.x=element_blank())
+
+
+figure2A = ggarrange(jif_plot + theme(legend.title=element_blank()), cite_plot + theme(legend.title=element_blank()), ncol=2, nrow=1, common.legend = T)
+
+
+# Reviews
+reviews = unique_transparency %>% filter(is_review == T)
+
+coi_jif_reviews = glm(is_coi_pred ~ jif2020_5 + year_firstpub, family = "binomial", data = reviews)
+fund_jif_reviews = glm(is_fund_pred ~ jif2020_5 + year_firstpub, family = "binomial", data = reviews)
+reg_jif_reviews = glm(is_register_pred ~ jif2020_5 + year_firstpub, family = "binomial", data = reviews)
+data_jif_reviews = glm(is_open_data ~ jif2020_5 + year_firstpub, family = "binomial", data = reviews)
+code_jif_reviews = glm(is_open_code ~ jif2020_5 + year_firstpub, family = "binomial", data = reviews)
+
+jif_plot_reviews = plot_models(coi_jif_reviews, fund_jif_reviews, reg_jif_reviews, data_jif_reviews, code_jif_reviews, rm.terms = "year_firstpub", axis.lim = c(0.2,5)) + ggtitle(NULL) + theme_classic() + theme(legend.position="none", axis.title.x=element_blank())
+
+coi_cite_reviews = glm(is_coi_pred ~ citedByCount_4 + year_firstpub, family = "binomial", data = reviews)
+fund_cite_reviews = glm(is_fund_pred ~ citedByCount_4 + year_firstpub, family = "binomial", data = reviews)
+reg_cite_reviews = glm(is_register_pred ~ citedByCount_4 + year_firstpub, family = "binomial", data = reviews)
+data_cite_reviews = glm(is_open_data ~ citedByCount_4 + year_firstpub, family = "binomial", data = reviews)
+code_cite_reviews = glm(is_open_code ~ citedByCount_4 + year_firstpub, family = "binomial", data = reviews)
+
+cite_plot_reviews = plot_models(coi_cite_reviews, fund_cite_reviews, reg_cite_reviews, data_cite_reviews, code_cite_reviews, rm.terms = "year_firstpub", axis.lim = c(0.2,5)) + ggtitle(NULL) + theme_classic() + theme(legend.position="none", axis.title.x=element_blank())
+
+figure2B = ggarrange(jif_plot_reviews + theme(legend.title=element_blank()), cite_plot_reviews + theme(legend.title=element_blank()), ncol=2, nrow=1, legend = "none")
+
+
+# Trials
+trials = unique_transparency %>% filter(is_trial == T)
+
+coi_jif_trials = glm(is_coi_pred ~ jif2020_5 + year_firstpub, family = "binomial", data = trials)
+fund_jif_trials = glm(is_fund_pred ~ jif2020_5 + year_firstpub, family = "binomial", data = trials)
+reg_jif_trials = glm(is_register_pred ~ jif2020_5 + year_firstpub, family = "binomial", data = trials)
+data_jif_trials = glm(is_open_data ~ jif2020_5 + year_firstpub, family = "binomial", data = trials)
+code_jif_trials = glm(is_open_code ~ jif2020_5 + year_firstpub, family = "binomial", data = trials)
+
+jif_plot_trials = plot_models(coi_jif_trials, fund_jif_trials, reg_jif_trials, data_jif_trials, code_jif_trials, rm.terms = "year_firstpub", axis.lim = c(0.2,5)) + ggtitle(NULL) + theme_classic() + theme(legend.position="none")
+
+coi_cite_trials = glm(is_coi_pred ~ citedByCount_4 + year_firstpub, family = "binomial", data = trials)
+fund_cite_trials = glm(is_fund_pred ~ citedByCount_4 + year_firstpub, family = "binomial", data = trials)
+reg_cite_trials = glm(is_register_pred ~ citedByCount_4 + year_firstpub, family = "binomial", data = trials)
+data_cite_trials = glm(is_open_data ~ citedByCount_4 + year_firstpub, family = "binomial", data = trials)
+code_cite_trials = glm(is_open_code ~ citedByCount_4 + year_firstpub, family = "binomial", data = trials)
+
+cite_plot_trials = plot_models(coi_cite_trials, fund_cite_trials, reg_cite_trials, data_cite_trials, code_cite_trials, rm.terms = "year_firstpub", axis.lim = c(0.2,5)) + ggtitle(NULL) + theme_classic()  + theme(legend.position="none")
+
+
+figure2C = ggarrange(jif_plot_trials + theme(legend.title=element_blank()), cite_plot_trials + theme(legend.title=element_blank()), ncol=2, nrow=1, legend = "none")
+
+figure2 = ggarrange(figure2A, figure2B, figure2C, ncol = 1, nrow = 3, common.legend = T, labels = c("A. All articles", "B. Reviews", "C. Trials"))
+
+# ggsave("figures/Figure2.png", figure2, dpi = 800, width = 27, height = 30, units = "cm")
+# ggsave("figures/Figure2.tiff", figure2, dpi = 800, width = 27, height = 30, units = "cm", compression = "lzw")
+```
+
+```{r, fig.width=5, fig.height=6}
+figure2
+```
+
+## Publisher differences
+
+Let's take a look at the top most and least transparent publishers in each indicator.
+
+### Conflict of interest disclosure
+
+```{r}
+unique_transparency %>% 
+        select(is_coi_pred, scimago_publisher) %>% 
+        group_by(scimago_publisher) %>%
+        summarise(coi = sum(is_coi_pred)/n()*100) %>%
+        arrange(desc(coi)) %>%
+        head(5)
+```
+
+It seems many publishers had 100% transparency. Let's check how many are these:
+
+```{r}
+nrow(unique_transparency %>% 
+        select(is_coi_pred, scimago_publisher) %>% 
+        group_by(scimago_publisher) %>%
+        summarise(coi = sum(is_coi_pred)/n()*100) %>%
+        filter(coi == 100))
+```
+
+Now, the top lowest adherence:
+
+```{r}
+unique_transparency %>% 
+        select(is_coi_pred, scimago_publisher) %>% 
+        group_by(scimago_publisher) %>%
+        summarise(coi = sum(is_coi_pred)/n()*100) %>%
+        arrange(coi) %>%
+        head(5)
+```
+
+It seems there are more than one. Let's count them:
+
+```{r}
+nrow(unique_transparency %>% 
+        select(is_coi_pred, scimago_publisher) %>% 
+        group_by(scimago_publisher) %>%
+        summarise(coi = sum(is_coi_pred)/n()*100) %>%
+        filter(coi == 0))
+```
+
+### Funding disclosure
+
+```{r}
+unique_transparency %>% 
+        select(is_fund_pred, scimago_publisher) %>% 
+        group_by(scimago_publisher) %>%
+        summarise(fund = sum(is_fund_pred)/n()*100) %>%
+        arrange(desc(fund)) %>%
+        head(5)
+```
+
+```{r}
+unique_transparency %>% 
+        select(is_fund_pred, scimago_publisher) %>% 
+        group_by(scimago_publisher) %>%
+        summarise(fund = sum(is_fund_pred)/n()*100) %>%
+        arrange(fund) %>%
+        head(5)
+```
+
+### Protocol registration
+
+```{r}
+unique_transparency %>% 
+        select(is_register_pred, scimago_publisher) %>% 
+        group_by(scimago_publisher) %>%
+        summarise(register = sum(is_register_pred)/n()*100) %>%
+        arrange(desc(register)) %>%
+        head(5)
+```
+
+```{r}
+unique_transparency %>% 
+        select(is_register_pred, scimago_publisher) %>% 
+        group_by(scimago_publisher) %>%
+        summarise(register = sum(is_register_pred)/n()*100) %>%
+        arrange(register) %>%
+        head(5)
+```
+
+### Data sharing
+
+```{r}
+unique_transparency %>% 
+        select(is_open_data, scimago_publisher) %>% 
+        group_by(scimago_publisher) %>%
+        summarise(data = sum(is_open_data)/n()*100) %>%
+        arrange(desc(data)) %>%
+        head(5)
+```
+
+```{r}
+unique_transparency %>% 
+        select(is_open_data, scimago_publisher) %>% 
+        group_by(scimago_publisher) %>%
+        summarise(data = sum(is_open_data)/n()*100) %>%
+        arrange(data) %>%
+        head(5)
+```
+
+### Code sharing
+
+```{r}
+unique_transparency %>% 
+        select(is_open_code, scimago_publisher) %>% 
+        group_by(scimago_publisher) %>%
+        summarise(code = sum(is_open_code)/n()*100) %>%
+        arrange(desc(code)) %>%
+        head(5)
+```
+
+```{r}
+unique_transparency %>% 
+        select(is_open_code, scimago_publisher) %>% 
+        group_by(scimago_publisher) %>%
+        summarise(code = sum(is_open_code)/n()*100) %>%
+        arrange(code) %>%
+        head(5)
+```
